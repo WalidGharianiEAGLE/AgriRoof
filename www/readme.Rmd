@@ -1,0 +1,365 @@
+---
+title: "Readme"
+author: "AgriRoof"
+date: "16/08/2020"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      collapse = TRUE,
+                      message = FALSE,
+                      warning = FALSE,
+                      error = FALSE)
+```
+## AgriRoof App
+
+With this app we our offers the possibility of finding suitable places to establish a rooftop farms in a city. Our main goal is to help our customers to save resources by evaluating the areas of interest with remote sensing and GIS data, so in the end, they can operate a profitable agricultural business. Our solution would deliver key information for local authorities, urban planners, and companies as local food markets.
+
+### Input data
+
+#### LiDAR data
+
+The LiDAR data utilized in our project has been downloaded from [Cologne municipality website](https://www.bezreg-koeln.nrw.de/brk_internet/geobasis/hoehenmodelle/3d-messdaten/index.html). It contains 3D measurements and the citys surface data collected by aircraft-based laser scanning. The dataset describes the terrain and the surface employing irregularly distributed georeferenced height points, covering the city with an average density of 4 to 10 points per m2. The Geobasis of the district distributes the measurements into tiles. Therefore, we have chosen a single tile located in the center of Bonn city as an experimental site.
+The LiDAR data we used enable us to generate, the digital terrain model (DTM) and the normalised digital surface model (nDSM).
+To learn more about our approach for LiDAR data processing using R and lidR package: <https://github.com/WalidGharianiEAGLE/AgriRoof>
+
+<img src="lidar_Workflow.png" align="middle" width=1359/>
+
+3D visualisation of Bonn AOI with rLiDAR 
+<img src="3D_FilteredLidar.png" align="middle" width=1085/>
+
+#### OSM data
+
+The Open Street Map Layers are freely available datasets which can dowloaded directly with [Qgis](https://www.qgis.org/en/site/). This Layers enable our Earth Observation team  to extract the Building footprints at our Bonn AOI.
+
+### Output Data
+
+The following chunk of codes provide description of the different layers and illustrate how we plot them with the App.
+
+#### Potential Rooftops
+
+```{r}
+library(rgdal)
+library(raster)
+library(plotly)
+library(mapview)
+library(plainview)
+
+library(shiny)
+library(shinydashboard)
+library(shinycssloaders)
+library(leaflet)
+library(leaflet.extras)
+library(widgetframe)
+```
+
+All Buildings at our AOI: We get information about the Building's types and Area
+```{r}
+
+Buildings_aoi <- readOGR("./Buildings_AOI.shp")
+Bonn_Buildings <- spTransform(Buildings_aoi, CRS("+proj=longlat +datum=WGS84"))
+
+
+bins_Tot_Area <- c(0, 400, 1000, 4000, Inf)
+pal_Tot_Area <- colorBin("RdPu", domain = Bonn_Buildings$Area, bins = bins_Tot_Area)
+
+labels <- sprintf(
+  "<strong>%s</strong><br/>%g m<sup>2</sup>",
+  Bonn_Buildings$building, Bonn_Buildings$Area
+) %>% 
+  lapply(htmltools::HTML) 
+
+
+leaflet(Bonn_Buildings) %>%
+  addTiles(group = "OSM (default)") %>%
+  addProviderTiles(providers$CartoDB.DarkMatter, group = "CartoDB.DM") %>%
+  addPolygons(fillColor = ~pal_Tot_Area(Area),
+              weight = 2,
+              opacity = 1,
+              color = "white",
+              dashArray = "3",
+              fillOpacity = 0.7,
+              group='Buildings Footprint',
+              highlightOptions = highlightOptions(color = "#67000d", weight = 3,
+                                                  bringToFront = TRUE), 
+              label = labels,
+              labelOptions = labelOptions(style = list("font-weight" = "normal", 
+                                                       padding = "3px 8px"),
+                                          textsize = "15px",
+                                          direction = "auto")) %>% 
+  addLegend(pal = pal_Tot_Area , values = ~Area, opacity = 0.7, 
+            position = "bottomleft", title = 'Rooftop Area m2',group = 'Buildings Footprint') %>% 
+  addLayersControl(
+    baseGroups = c("CartoDB.DM","OSM (default)"),
+    overlayGroups = c("Buildings Footprint"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>% 
+  addMeasure(primaryLengthUnit = "meters", primaryAreaUnit = "sqmeters",position = "topleft")
+
+```
+
+
+nDSM of all Buldings:
+```{r}
+nDSM_All_Buildings <- raster("./nDSM_Buildings.tif")
+
+bins_nDSM_AllBuildings <- c(0,5, 10, 20,30,Inf)
+
+pal_nDSM_AllBuildings <- colorBin("Reds", values(nDSM_All_Buildings), bins = bins_nDSM_AllBuildings, na.color = "transparent")
+
+leaflet(nDSM_All_Buildings) %>%  
+  addTiles(group = "OSM (default)") %>%
+  addProviderTiles(providers$CartoDB.DarkMatter, group = "CartoDB.DM") %>% 
+  addRasterImage(nDSM_All_Buildings, colors = pal_nDSM_AllBuildings, opacity = 0.8, group = "Buildings Footprint: Height (m)") %>%
+  addLegend(pal = pal_nDSM_AllBuildings, values = values(nDSM_All_Buildings),
+            title = "Buildings Footprint: Height (m)",position = "bottomleft", group = "Buildings Footprint: Height (m)") %>%
+  addLayersControl(
+    baseGroups = c("CartoDB.DM","OSM (default)"),
+    overlayGroups = c("Buildings Footprint: Height (m)"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) 
+
+```
+
+
+Potential Flat Roofs: The roofs must be larger than 400 m2, to be profitable for commercial agriculture. Nevertheless, we could include smaller buildings according to the clients' needs.
+```{r}
+Potential_Flat_Roofs_SHP <- readOGR("./FlatRoofs.shp")
+Potential_Flat_Roofs_SHP <- spTransform(Potential_Flat_Roofs_SHP, CRS("+proj=longlat +datum=WGS84"))
+
+bins_Roof_Area_Update <- c(0, 400, 1000, 4000)
+pal_Roof_Area_Update <- colorBin("RdPu", domain = Potential_Flat_Roofs_SHP$Area, bins =bins_Roof_Area_Update )
+
+labels_2_update <- sprintf(
+  "<strong>%s</strong><br/>%g m<sup>2</sup>",
+  Potential_Flat_Roofs_SHP$building, Potential_Flat_Roofs_SHP$Area
+) %>% 
+  lapply(htmltools::HTML)
+
+leaflet(Potential_Flat_Roofs_SHP) %>%  
+  addTiles(group = "OSM (default)") %>%
+  addProviderTiles(providers$CartoDB.DarkMatter, group = "CartoDB.DM") %>% 
+  addPolygons(fillColor = ~pal_Roof_Area_Update(Area),
+              weight = 2,
+              color = "white",
+              dashArray = "1",
+              opacity = 1,
+              fillOpacity = .7,
+              group='Potential Rooftops: Area (m\u00B2)',
+              highlightOptions = highlightOptions(color = "#67000d", weight = 3,
+                                                  bringToFront = TRUE), 
+              label = labels_2_update,
+              labelOptions = labelOptions(style = list("font-weight" = "normal", 
+                                                           padding = "3px 8px"),
+                                              textsize = "15px",
+                                              direction = "auto")) %>% 
+  addLegend(pal = pal_Roof_Area_Update , values = ~Area, opacity = 0.7, 
+                position = "bottomright", title = 'Potential Rooftops: Area (m\u00B2)',group = 'Potential Rooftops: Area (m\u00B2)') %>%
+   addLayersControl(
+    baseGroups = c("CartoDB.DM","OSM (default)"),
+    overlayGroups = c('Potential Rooftops: Area (m\u00B2)'),
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>% 
+  addMeasure(primaryLengthUnit = "meters", primaryAreaUnit = "sqmeters",position = "topleft")
+  
+```
+
+
+Buildings Slope: We classify the rooftops in two categories: Flat (0B0-5B0), Non-flat (any other slope)
+```{r}
+slope_Buildings <- raster("./slope_Buildings.tif")
+
+### : 2 classes: 0-5B0 represent the potential flat roofs, 5-Inf are not of an interst
+bins_slope_classes <- c(0,5,Inf)
+
+pal_slope_classes <- colorBin(palette = "YlGn", values(slope_Buildings ), bins = bins_slope_classes, na.color = "transparent", reverse = TRUE)
+
+leaflet() %>%  
+  addTiles(group = "OSM (default)") %>%
+  addProviderTiles(providers$CartoDB.DarkMatter, group = "CartoDB.DM") %>% 
+  addRasterImage(slope_Buildings, colors = pal_slope_classes, opacity = 0.8, group = "Potential Rooftops: Slope (\u00B0)") %>%
+  addLegend(pal = pal_slope_classes, values = values(slope_Buildings),
+            title = "Potential Rooftops: Slope (\u00B0)",position = "bottomright", group = "Potential Rooftops: Slope (B0)") %>%
+  addLayersControl(
+    baseGroups = c("CartoDB.DM","OSM (default)"),
+    overlayGroups = c("Potential Rooftops: Slope (\u00B0)"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+
+```
+
+
+Height of the potential rooftops: An important factor to save resources in occupational safety and mitigation measurements.
+```{r}
+nDSM_Flat_Roofs <- raster("./ndsm_Flat_Roofs.tif")
+
+bins_nDSM_FlatRoofs <- c(0,5, 10, 20,30,Inf)
+pal_nDSM_FlatRoofs <- colorBin("Reds", values(nDSM_Flat_Roofs), bins = bins_nDSM_FlatRoofs, na.color = "transparent")
+
+leaflet(nDSM_Flat_Roofs) %>%  
+  addTiles(group = "OSM (default)") %>%
+  addProviderTiles(providers$CartoDB.DarkMatter, group = "CartoDB.DM") %>% 
+  addRasterImage(nDSM_Flat_Roofs,colors = pal_nDSM_FlatRoofs, opacity = 0.8, group = "Potential Rooftops : Height (m)") %>%
+   addLegend(pal = pal_nDSM_FlatRoofs, values = values(nDSM_Flat_Roofs),
+                title = "Potential Rooftops : Height (m)",position = "bottomleft", group = "Potential Rooftops : Height (m)") %>%
+  addLayersControl(
+    baseGroups = c("CartoDB.DM","OSM (default)"),
+    overlayGroups = c("Potential Rooftops : Height (m)"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+```
+
+
+Street Network
+```{r}
+street_network <- readOGR("./Street_network.shp")
+Bonn_street_network <- spTransform(street_network, CRS("+proj=longlat +datum=WGS84"))
+
+leaflet() %>%
+  addTiles(group = "OSM (default)") %>%
+  addProviderTiles(providers$CartoDB.DarkMatter, group = "CartoDB.DM") %>% 
+  addPolylines(data=Bonn_street_network, 
+              weight = 2,
+              color = "#de2d26",
+              label = ~highway,
+              fillOpacity = 0,
+              group = "street network",
+              highlightOptions = highlightOptions(color = "#67000d", weight = 3,
+                                                  bringToFront = TRUE)) %>% 
+  addLayersControl(
+    baseGroups = c("CartoDB.DM","OSM (default)"),
+    overlayGroups = c("street network"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>% 
+  addMeasure(primaryLengthUnit = "meters", primaryAreaUnit = "sqmeters",position = "topleft")
+```
+
+Buffer Zones: Logistics is an important part of the process chain, the distance to main roads could be decisive variable for cost- and time-effective transportation. We opted for 3 buffer zones out of the main street network: (0-100m; 100-500m; 500-1000m)
+```{r}
+######################### Shape file of Buffer ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Buffer_zones <- readOGR("./BufferZones.shp")
+Bonn_Buffer_Zones <- spTransform(Buffer_zones, CRS("+proj=longlat +datum=WGS84"))
+
+
+bins_Buffer_Zones <- c(0,100,500,1000)
+pal_Buffer_Zones <- colorBin("RdBu", domain = Bonn_Buffer_Zones$distance, bins =bins_Buffer_Zones)
+
+labels_3 <- sprintf(
+  "<strong>%s</strong><br/>%g m",
+  Bonn_Buffer_Zones$Buffer, Bonn_Buffer_Zones$distance
+) %>% 
+  lapply(htmltools::HTML)  
+
+leaflet(Bonn_Buffer_Zones) %>%
+  addTiles(group = "OSM (default)") %>%
+  addProviderTiles(providers$CartoDB.DarkMatter, group = "CartoDB.DM") %>%
+  addPolygons(fillColor = ~pal_Buffer_Zones(distance),
+              weight = 2,
+              group = "Buffer Zones",
+              highlightOptions = highlightOptions(color = "#67000d", weight = 3,
+                                                  bringToFront = TRUE),
+              label = labels_3)  %>% 
+  addLayersControl(
+    baseGroups = c("CartoDB.DM","(OSM (default)"),
+    overlayGroups = c("Buffer Zones"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>% 
+  addMeasure(primaryLengthUnit = "meters", primaryAreaUnit = "sqmeters",position = "topleft")
+
+```
+
+#### Data Playground: Extra Data
+
+For illustration purposes: Sentinel 2 RGB image on top of Bonn AOI at 10 m resolution
+```{r}
+S2_BonnAoi<- stack("./S2_BonnAoi.tif")
+names(S2_BonnAoi)<- c("R","G","B")
+
+Bonn_AOI_Tile <- readOGR("./tile_bonnAoi.shp")
+Bonn_AOI_Tile <- spTransform(Bonn_AOI_Tile, CRS("+proj=longlat +datum=WGS84"))
+
+my_map<-leaflet() %>% 
+  addTiles(group = "OSM (default)") %>%
+  addProviderTiles(providers$CartoDB.DarkMatter, group = "CartoDB.DM") %>%
+  addPolylines(data=Bonn_AOI_Tile, 
+               weight = 4,
+               color = "#de2d26",
+               fillOpacity = 0,
+               group = "Bonn AOI",
+               highlightOptions = highlightOptions(color = "#67000d", weight = 3,
+                                                   bringToFront = TRUE)) %>% 
+  addLayersControl(
+    baseGroups = c("CartoDB.DM","OSM (default)"),
+    overlayGroups = c("Bonn AOI"),
+    options = layersControlOptions(collapsed = FALSE))
+    
+viewRGB(S2_BonnAoi,"R", "G", "B", map = my_map) # RGB: True Color Composite
+
+```
+
+
+DTM at Bonn AOI
+```{r}
+DTM_AOI <- raster("./DTM.tif")
+
+pal_DTM_AOI <- colorBin("YlGnBu", values(DTM_AOI), na.color = "transparent")
+
+leaflet(DTM_AOI) %>%  
+  setView(7.07800, 50.7400,13.5) %>% 
+  addTiles(group = "OSM (default)") %>%
+  addProviderTiles(providers$CartoDB.DarkMatter, group = "CartoDB.DM") %>% 
+  addRasterImage(DTM_AOI,colors = pal_DTM_AOI, opacity = 0.8, group = "Bonn AOI: DTM") %>%
+  addLegend(pal = pal_DTM_AOI, values = values(DTM_AOI),
+            title = "Bonn AOI: DTM",position = "bottomleft", group = "Bonn AOI: DTM") %>%
+  addLayersControl(
+    baseGroups = c("CartoDB.DM","OSM (default)"),
+    overlayGroups = c("Bonn AOI: DTM"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+```
+
+nDSM at Bonn AOI
+```{r}
+nDSM_AOI <- raster("./nDSM_Bonn_Outlier_Gound_Removed.tif")
+
+bins_nDSM_AOI <- c(0,5, 10, 20,30,Inf)
+pal_nDSM_AOI <- colorBin("Reds", values(nDSM_AOI), bins = bins_nDSM_AOI, na.color = "transparent")
+
+leaflet(nDSM_AOI) %>%  
+  addTiles(group = "OSM (default)") %>%
+  addProviderTiles(providers$CartoDB.DarkMatter, group = "CartoDB.DM") %>% 
+  addRasterImage(nDSM_AOI, colors = pal_nDSM_AOI, opacity = 0.8, group = "nDSM at Bonn AOI (m)") %>%
+  addLegend(pal = pal_nDSM_AOI, values = values(nDSM_AOI),
+            title = "nDSM at Bonn AOI (m)",position = "bottomright", group = "nDSM at Bonn AOI (m)") %>%
+  addLayersControl(
+    baseGroups = c("CartoDB.DM","OSM (default)"),
+    overlayGroups = c("nDSM at Bonn AOI (m)"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+
+```
+
+
+Slope at Bonn AOI 
+```{r}
+Slope_AOI <- raster("./Slope_Bonn_Outlier_Gound_Removed.tif")
+Slope_AOI
+
+bins_Slope_AOI <- c(0,5, 10, 20,30,40,Inf)
+pal_Slope_AOI <- colorBin("YlGn", values(Slope_AOI), bins = bins_Slope_AOI, na.color = "transparent")
+
+leaflet(Slope_AOI) %>%  
+  addTiles(group = "OSM (default)") %>%
+  addProviderTiles(providers$CartoDB.DarkMatter, group = "CartoDB.DM") %>% 
+  addRasterImage(Slope_AOI,colors = pal_Slope_AOI, opacity = 0.8, group = "Bonn AOI: Slope (B0)") %>%
+  addLegend(pal = pal_Slope_AOI, values = values(Slope_AOI),
+            title = "Bonn AOI: Slope (B0)",position = "bottomleft", group = "Bonn AOI: Slope(B0)") %>%
+  addLayersControl(
+    baseGroups = c("CartoDB.DM","OSM (default)"),
+    overlayGroups = c("Bonn AOI: Slope (B0)"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+```
