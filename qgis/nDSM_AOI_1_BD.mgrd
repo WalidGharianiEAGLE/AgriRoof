@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SAGA_METADATA>
+  <HISTORY saga-version="2.3.2">
+    <MODULE library="shapes_grid" id="7" name="Clip Grid with Polygon">
+      <OPTION type="grid_system" id="PARAMETERS_GRID_SYSTEM" name="Grid system">
+        <CELLSIZE>1</CELLSIZE>
+        <XMIN>364000.5</XMIN>
+        <XMAX>364999.5</XMAX>
+        <YMIN>5622000.5</YMIN>
+        <YMAX>5622999.5</YMAX>
+      </OPTION>
+      <OPTION type="boolean" id="NODATA" name="Exclude No-Data Area">FALSE</OPTION>
+      <INPUT_LIST type="grid_list" id="INPUT" name="Input" system="PARAMETERS_GRID_SYSTEM">
+        <ndsmbonn type="grid_list" id="INPUT" name="Input" system="PARAMETERS_GRID_SYSTEM">
+          <FILE>C:/Users/andre/AppData/Local/Temp/processing_jkHDMa/f7eec471d6954645aae5f149eedeb2aa/ndsmbonn.sgrd</FILE>
+        </ndsmbonn>
+      </INPUT_LIST>
+      <INPUT type="shapes" id="POLYGONS" name="Polygons">
+        <FILE>C:/Users/andre/AppData/Local/Temp/processing_jkHDMa/002695bbdc09477d913d3ae9fa77f59b/POLYGONS.shp</FILE>
+      </INPUT>
+      <OUTPUT type="grid_list" id="OUTPUT" name="Output">ndsmbonn</OUTPUT>
+    </MODULE>
+  </HISTORY>
+  <SOURCE>
+    <FILE>F:\Project Managment\GEODATA\nDSM_AOI_1_BD.sgrd</FILE>
+    <DATABASE></DATABASE>
+    <PROJECTION></PROJECTION>
+  </SOURCE>
+  <DESCRIPTION></DESCRIPTION>
+</SAGA_METADATA>
