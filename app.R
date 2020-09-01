@@ -11,6 +11,15 @@
 #
 # Output        : AgriRoof R Shiny App
 ##########################################################################################################################################################################################################################
+list.of.packages <- c("rgdal","raster","plotly","mapview","plainview","ggplot2","tidyverse",
+                      "shiny","shinydashboard","shinycssloaders","leaflet","leaflet.extras","widgetframe")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[, "Package"])]
+if (length(new.packages)) {
+  print("installing : ")
+  print(new.packages)
+  install.packages(new.packages, repos = "http://cran.rstudio.com/", dependencies = TRUE)
+}
+
 library(rgdal)
 library(raster)
 library(plotly)
